@@ -2,6 +2,14 @@ import { createClient } from "@/lib/supabase/server";
 import { buildDashboardSummary, sortSectionsAndLessons } from "@/lib/progress";
 import type { ActivityLog, CourseWithSections } from "@/lib/types";
 
+function isAuthSessionMissingError(error: { name?: string; message?: string; status?: number } | null) {
+  if (!error) {
+    return false;
+  }
+
+  return error.name === "AuthSessionMissingError" || error.message === "Auth session missing!" || error.status === 400;
+}
+
 function isSchemaMissingError(error: { code?: string; message?: string } | null) {
   if (!error) {
     return false;
@@ -18,6 +26,9 @@ async function getUserId() {
   } = await supabase.auth.getUser();
 
   if (error) {
+    if (isAuthSessionMissingError(error)) {
+      return null;
+    }
     throw error;
   }
 
@@ -32,6 +43,9 @@ export async function ensureProfile() {
   } = await supabase.auth.getUser();
 
   if (error) {
+    if (isAuthSessionMissingError(error)) {
+      return null;
+    }
     throw error;
   }
 

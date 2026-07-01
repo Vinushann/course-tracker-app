@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseConfig } from "@/lib/supabase/config";
+import { getSupabaseCookieOptions } from "@/lib/supabase/options";
 
 export async function GET(request: NextRequest) {
   const { url, anonKey } = getSupabaseConfig();
@@ -10,6 +11,7 @@ export async function GET(request: NextRequest) {
   let response = NextResponse.redirect(new URL(next, request.url));
 
   const supabase = createServerClient(url, anonKey, {
+    cookieOptions: getSupabaseCookieOptions(),
     cookies: {
       getAll() {
         return request.cookies.getAll();

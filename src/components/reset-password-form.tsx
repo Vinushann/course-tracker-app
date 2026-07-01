@@ -1,44 +1,28 @@
 import Link from "next/link";
+import { updatePasswordAction } from "@/app/actions/auth";
 import { APP_NAME } from "@/lib/constants";
 import { SubmitButton } from "@/components/submit-button";
 
-type AuthFormProps = {
-  mode: "login" | "signup";
-  action: (formData: FormData) => Promise<void>;
+type ResetPasswordFormProps = {
   message?: string;
   success?: string;
 };
 
-export function AuthForm({ mode, action, message, success }: AuthFormProps) {
-  const isLogin = mode === "login";
-
+export function ResetPasswordForm({ message, success }: ResetPasswordFormProps) {
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="card-shadow soft-ring w-full max-w-md rounded-[28px] border border-line bg-surface p-8">
         <div className="space-y-3">
-          <p className="text-sm uppercase tracking-[0.28em] text-muted">Discipline tracker</p>
+          <p className="text-sm uppercase tracking-[0.28em] text-muted">Choose a new password</p>
           <h1 className="text-4xl font-semibold tracking-tight">{APP_NAME}</h1>
           <p className="text-sm leading-6 text-muted">
-            {isLogin
-              ? "Log in to review your learning streaks, completed time, and course progress."
-              : "Create your account and start tracking lessons, sections, and course progress."}
+            Set a new password for your account, then use it to log back in.
           </p>
         </div>
 
-        <form action={action} className="mt-8 space-y-4">
+        <form action={updatePasswordAction} className="mt-8 space-y-4">
           <label className="block space-y-2">
-            <span className="text-sm font-medium">Email</span>
-            <input
-              type="email"
-              name="email"
-              required
-              className="w-full rounded-2xl border border-line bg-surface-strong/90 px-4 py-3 outline-none transition focus:border-accent"
-              placeholder="you@example.com"
-            />
-          </label>
-
-          <label className="block space-y-2">
-            <span className="text-sm font-medium">Password</span>
+            <span className="text-sm font-medium">New password</span>
             <input
               type="password"
               name="password"
@@ -49,13 +33,17 @@ export function AuthForm({ mode, action, message, success }: AuthFormProps) {
             />
           </label>
 
-          {isLogin ? (
-            <div className="flex justify-end">
-              <Link href="/forgot-password" className="text-sm font-medium text-accent">
-                Forgot password?
-              </Link>
-            </div>
-          ) : null}
+          <label className="block space-y-2">
+            <span className="text-sm font-medium">Confirm password</span>
+            <input
+              type="password"
+              name="confirm_password"
+              required
+              minLength={6}
+              className="w-full rounded-2xl border border-line bg-surface-strong/90 px-4 py-3 outline-none transition focus:border-accent"
+              placeholder="Repeat your new password"
+            />
+          </label>
 
           {message ? (
             <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{message}</p>
@@ -67,13 +55,13 @@ export function AuthForm({ mode, action, message, success }: AuthFormProps) {
             </p>
           ) : null}
 
-          <SubmitButton className="w-full">{isLogin ? "Log In" : "Create Account"}</SubmitButton>
+          <SubmitButton className="w-full">Update password</SubmitButton>
         </form>
 
         <p className="mt-6 text-sm text-muted">
-          {isLogin ? "Need an account?" : "Already have an account?"}{" "}
-          <Link href={isLogin ? "/signup" : "/login"} className="font-semibold text-accent">
-            {isLogin ? "Sign up" : "Log in"}
+          Back to{" "}
+          <Link href="/login" className="font-semibold text-accent">
+            login
           </Link>
         </p>
       </div>

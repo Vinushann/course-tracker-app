@@ -1,5 +1,5 @@
 import { eachDayOfInterval, endOfDay, format, startOfDay, subDays } from "date-fns";
-import type { ActivityLog, CourseWithSections, DashboardSummary, Lesson } from "@/lib/types";
+import type { ActivityLog, CourseWithSections, DashboardSummary, Lesson, SectionWithLessons } from "@/lib/types";
 
 export function getLessonsForCourse(course: CourseWithSections) {
   return course.sections.flatMap((section) => section.lessons);
@@ -41,6 +41,28 @@ export function sortSectionsAndLessons(course: CourseWithSections) {
     }));
 
   return { ...course, sections };
+}
+
+export function getSectionProgress(section: SectionWithLessons) {
+  const lessonsWithDuration = section.lessons.filter((lesson) => lesson.duration_minutes > 0);
+  const totalMinutes = lessonsWithDuration.reduce((sum, lesson) => sum + lesson.duration_minutes, 0);
+  const completedMinutes = section.lessons.reduce(
+    (sum, lesson) => sum + (lesson.completed ? lesson.duration_minutes : 0),
+    0,
+  );
+  const totalLessonsCount = section.lessons.length;
+  const completedLessonsCount = section.lessons.filter((lesson) => lesson.completed).length;
+  const remainingMinutes = Math.max(totalMinutes - completedMinutes, 0);
+  const progressPercentage = totalMinutes > 0 ? Math.round((completedMinutes / totalMinutes) * 100) : 0;
+
+  return {
+    totalMinutes,
+    completedMinutes,
+    completedLessonsCount,
+    totalLessonsCount,
+    remainingMinutes,
+    progressPercentage,
+  };
 }
 
 export function buildDashboardSummary(courses: CourseWithSections[], activityLogs: ActivityLog[]): DashboardSummary {

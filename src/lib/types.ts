@@ -87,3 +87,14 @@ export type SetupStatus = {
   schemaReady: boolean;
   message?: string;
 };
+
+export type CourseBlueprintLessonInput = {
+  title: string;
+  duration_minutes: number;
+  video_url: string | null;
+};
+
+export type CourseBlueprintSectionInput = {
+  title: string;
+  lessons: CourseBlueprintLessonInput[];
+};

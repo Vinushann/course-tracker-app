@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0f1115;
-  --surface: #161a21;
-  --surface-strong: #1d232d;
-  --foreground: #f4efe7;
-  --muted: #a89f93;
-  --line: rgba(244, 239, 231, 0.1);
-  --accent: #d9723d;
-  --accent-soft: rgba(217, 114, 61, 0.14);
-  --success: #4da56b;
+  --background: #101317;
+  --surface: #171b21;
+  --surface-strong: #20262e;
+  --foreground: #eef2f5;
+  --muted: #9aa5b1;
+  --line: rgba(238, 242, 245, 0.09);
+  --accent: #7cc6a1;
+  --accent-soft: rgba(124, 198, 161, 0.14);
+  --success: #7cc6a1;
 }
 
 @theme inline {
@@ -32,17 +32,14 @@
 
 html {
   color-scheme: dark;
-  background:
-    radial-gradient(circle at top left, rgba(217, 114, 61, 0.22), transparent 26%),
-    radial-gradient(circle at right 10%, rgba(77, 165, 107, 0.16), transparent 20%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 30%),
-    var(--background);
+  background: var(--background);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  letter-spacing: -0.01em;
 }
 
 a {
@@ -61,9 +58,16 @@ textarea {
 }
 
 .card-shadow {
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
 }
 
 .soft-ring {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.panel-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 24px 24px;
 }

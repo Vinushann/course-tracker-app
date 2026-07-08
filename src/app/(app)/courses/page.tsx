@@ -1,8 +1,16 @@
 import { CourseManager } from "@/components/course-manager";
 import { getCoursesForUser } from "@/lib/data";
 
-export default async function CoursesPage() {
-  const courses = await getCoursesForUser();
+type CoursesPageProps = {
+  searchParams: Promise<{
+    new?: string;
+  }>;
+};
 
-  return <CourseManager courses={courses} />;
+export default async function CoursesPage({ searchParams }: CoursesPageProps) {
+  const courses = await getCoursesForUser();
+  const params = await searchParams;
+  const initialShowCreate = params.new === "1";
+
+  return <CourseManager courses={courses} initialShowCreate={initialShowCreate} />;
 }

@@ -11,43 +11,63 @@ import {
   updateSectionAction,
 } from "@/app/actions/courses";
 import { SubmitButton } from "@/components/submit-button";
-import { getCourseProgress, getLessonCompletionTimestamp } from "@/lib/progress";
+import { getCourseProgress, getLessonCompletionTimestamp, getSectionProgress } from "@/lib/progress";
 import type { CourseWithSections } from "@/lib/types";
 import { formatMinutes } from "@/lib/utils";
 
 type CourseDetailManagerProps = {
   course: CourseWithSections;
+  mode?: "manage" | "track";
 };
 
-export function CourseDetailManager({ course }: CourseDetailManagerProps) {
+export function CourseDetailManager({ course, mode = "manage" }: CourseDetailManagerProps) {
+  const isTrackMode = mode === "track";
   const [showSectionForm, setShowSectionForm] = useState(course.sections.length === 0);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
   const [openLessonFormSectionId, setOpenLessonFormSectionId] = useState<string | null>(course.sections[0]?.id ?? null);
+  const [openSectionIds, setOpenSectionIds] = useState<string[]>(course.sections[0]?.id ? [course.sections[0].id] : []);
   const progress = getCourseProgress(course);
+
+  function toggleSection(sectionId: string) {
+    setOpenSectionIds((current) =>
+      current.includes(sectionId) ? current.filter((id) => id !== sectionId) : [...current, sectionId],
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <section className="soft-ring rounded-[32px] border border-line bg-surface p-6">
+      <section className="soft-ring rounded-[24px] border border-line bg-surface p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-muted">{course.category || "Uncategorized"}</p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-tight">{course.title}</h1>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-muted">
+              {isTrackMode ? "Tracking view" : "Course management"}
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{course.title}</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
-              {course.description || "Add sections and lessons to build a clear, honest view of your progress."}
+              {course.description ||
+                (isTrackMode
+                  ? "Tick lessons as you complete them and let the app update your progress automatically."
+                  : "Add sections and lessons to build a clear, honest view of your progress.")}
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl bg-surface-strong p-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-muted">Completed</p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[18px] bg-surface-strong p-4">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Lessons done</p>
+              <p className="mt-2 text-2xl font-semibold">
+                {progress.completedLessonsCount}/{progress.totalLessonsCount}
+              </p>
+            </div>
+            <div className="rounded-[18px] bg-surface-strong p-4">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Completed</p>
               <p className="mt-2 text-2xl font-semibold">{formatMinutes(progress.completedMinutes)}</p>
             </div>
-            <div className="rounded-2xl bg-surface-strong p-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-muted">Remaining</p>
+            <div className="rounded-[18px] bg-surface-strong p-4">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Remaining</p>
               <p className="mt-2 text-2xl font-semibold">{formatMinutes(progress.remainingMinutes)}</p>
             </div>
-            <div className="rounded-2xl bg-surface-strong p-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-muted">Progress</p>
+            <div className="rounded-[18px] bg-surface-strong p-4">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Progress</p>
               <p className="mt-2 text-2xl font-semibold">{progress.progressPercentage}%</p>
             </div>
           </div>
@@ -64,74 +84,106 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
         </div>
       </section>
 
-      <section className="soft-ring rounded-[28px] border border-line bg-surface p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-muted">Sections</p>
-            <h2 className="text-2xl font-semibold">Organize the course into manageable chunks</h2>
+      {!isTrackMode ? (
+        <section className="soft-ring rounded-[24px] border border-line bg-surface p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-muted">Sections</p>
+              <h2 className="text-2xl font-semibold tracking-tight">Organize the course into manageable chunks</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSectionForm((current) => !current)}
+              className="rounded-full border border-line px-4 py-2 text-sm font-medium transition hover:bg-surface-strong"
+            >
+              {showSectionForm ? "Hide form" : "Add section"}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowSectionForm((current) => !current)}
-            className="rounded-full border border-line px-4 py-2 text-sm font-medium transition hover:border-accent hover:text-accent"
-          >
-            {showSectionForm ? "Hide form" : "Add section"}
-          </button>
-        </div>
 
-        {showSectionForm ? (
-          <form action={createSectionAction} className="mt-6 flex flex-col gap-4 sm:flex-row">
-            <input type="hidden" name="course_id" value={course.id} />
-            <input
-              name="title"
-              required
-              placeholder="SQL Joins"
-              className="min-w-0 flex-1 rounded-2xl border border-line bg-surface-strong/90 px-4 py-3 outline-none focus:border-accent"
-            />
-            <SubmitButton>Add section</SubmitButton>
-          </form>
-        ) : null}
-      </section>
+          {showSectionForm ? (
+            <form action={createSectionAction} className="mt-6 flex flex-col gap-4 sm:flex-row">
+              <input type="hidden" name="course_id" value={course.id} />
+              <input
+                name="title"
+                required
+                className="min-w-0 flex-1 rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
+              />
+              <SubmitButton>Add section</SubmitButton>
+            </form>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="space-y-5">
         {course.sections.map((section) => {
           const isEditingSection = editingSectionId === section.id;
+          const sectionProgress = getSectionProgress(section);
+          const isSectionOpen = openSectionIds.includes(section.id);
 
           return (
-            <section key={section.id} className="soft-ring rounded-[28px] border border-line bg-surface p-6">
+            <section key={section.id} className="soft-ring rounded-[24px] border border-line bg-surface p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted">Section {section.sort_order}</p>
-                  <h3 className="mt-2 text-2xl font-semibold">{section.title}</h3>
-                  <p className="mt-1 text-sm text-muted">{section.lessons.length} lessons</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleSection(section.id)}
+                  className="flex min-w-0 flex-1 items-start justify-between gap-4 text-left"
+                >
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Section {section.sort_order}</p>
+                    <h3 className="mt-2 text-2xl font-semibold tracking-tight">{section.title}</h3>
+                    <p className="mt-1 text-sm text-muted">
+                      {sectionProgress.completedLessonsCount}/{sectionProgress.totalLessonsCount} lessons completed
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-line px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                    {isSectionOpen ? "Hide" : "Show"}
+                  </span>
+                </button>
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenLessonFormSectionId((current) => (current === section.id ? null : section.id))
-                    }
-                    className="rounded-full border border-line px-4 py-2 text-sm font-medium"
-                  >
-                    {openLessonFormSectionId === section.id ? "Close lesson form" : "Add lesson"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingSectionId(isEditingSection ? null : section.id)}
-                    className="rounded-full border border-line px-4 py-2 text-sm font-medium"
-                  >
-                    {isEditingSection ? "Close edit" : "Edit section"}
-                  </button>
-                  <form action={deleteSectionAction}>
-                    <input type="hidden" name="section_id" value={section.id} />
-                    <input type="hidden" name="course_id" value={course.id} />
-                    <SubmitButton className="bg-transparent text-foreground soft-ring border border-line">Delete</SubmitButton>
-                  </form>
+                {!isTrackMode ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenLessonFormSectionId((current) => (current === section.id ? null : section.id))
+                      }
+                      className="rounded-full border border-line px-4 py-2 text-sm font-medium transition hover:bg-surface-strong"
+                    >
+                      {openLessonFormSectionId === section.id ? "Close lesson form" : "Add lesson"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingSectionId(isEditingSection ? null : section.id)}
+                      className="rounded-full border border-line px-4 py-2 text-sm font-medium transition hover:bg-surface-strong"
+                    >
+                      {isEditingSection ? "Close edit" : "Edit section"}
+                    </button>
+                    <form action={deleteSectionAction}>
+                      <input type="hidden" name="section_id" value={section.id} />
+                      <input type="hidden" name="course_id" value={course.id} />
+                      <SubmitButton variant="outline" className="soft-ring">
+                        Delete
+                      </SubmitButton>
+                    </form>
+                  </div>
+                ) : (
+                  <div className="rounded-full border border-accent/30 bg-accent-soft px-4 py-2 text-sm font-semibold text-accent">
+                    {sectionProgress.progressPercentage}% tracked
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between text-sm text-muted">
+                  <span>{formatMinutes(sectionProgress.completedMinutes)} completed</span>
+                  <span>{formatMinutes(sectionProgress.remainingMinutes)} remaining</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-accent-soft">
+                  <div className="h-full rounded-full bg-accent" style={{ width: `${sectionProgress.progressPercentage}%` }} />
                 </div>
               </div>
 
-              {isEditingSection ? (
+              {isSectionOpen && !isTrackMode && isEditingSection ? (
                 <form action={updateSectionAction} className="mt-5 grid gap-4 sm:grid-cols-[1fr_140px_auto]">
                   <input type="hidden" name="section_id" value={section.id} />
                   <input type="hidden" name="course_id" value={course.id} />
@@ -139,21 +191,21 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                     name="title"
                     required
                     defaultValue={section.title}
-                    className="rounded-2xl border border-line bg-surface-strong/90 px-4 py-3 outline-none focus:border-accent"
+                    className="rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
                   />
                   <input
                     name="sort_order"
                     type="number"
                     min="1"
                     defaultValue={section.sort_order}
-                    className="rounded-2xl border border-line bg-surface-strong/90 px-4 py-3 outline-none focus:border-accent"
+                    className="rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
                   />
                   <SubmitButton>Save section</SubmitButton>
                 </form>
               ) : null}
 
-              {openLessonFormSectionId === section.id ? (
-                <form action={createLessonAction} className="mt-6 grid gap-4 rounded-[24px] bg-surface-strong p-4 lg:grid-cols-2">
+              {isSectionOpen && !isTrackMode && openLessonFormSectionId === section.id ? (
+                <form action={createLessonAction} className="mt-6 grid gap-4 rounded-[18px] bg-surface-strong p-4 lg:grid-cols-2">
                   <input type="hidden" name="course_id" value={course.id} />
                   <input type="hidden" name="section_id" value={section.id} />
                   <label className="space-y-2">
@@ -161,8 +213,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                     <input
                       name="title"
                       required
-                      placeholder="Inner Join"
-                      className="w-full rounded-2xl border border-line bg-background/60 px-4 py-3 outline-none focus:border-accent"
+                      className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                     />
                   </label>
                   <label className="space-y-2">
@@ -172,8 +223,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                       type="number"
                       min="0"
                       required
-                      placeholder="18"
-                      className="w-full rounded-2xl border border-line bg-background/60 px-4 py-3 outline-none focus:border-accent"
+                      className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                     />
                   </label>
                   <label className="space-y-2 lg:col-span-2">
@@ -181,8 +231,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                     <input
                       name="video_url"
                       type="url"
-                      placeholder="https://example.com/video"
-                      className="w-full rounded-2xl border border-line bg-background/60 px-4 py-3 outline-none focus:border-accent"
+                      className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                     />
                   </label>
                   <div className="lg:col-span-2">
@@ -191,9 +240,9 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                 </form>
               ) : null}
 
-              <div className="mt-6 space-y-4">
+              {isSectionOpen ? <div className="mt-6 space-y-4">
                 {section.lessons.length === 0 ? (
-                  <div className="rounded-[22px] border border-dashed border-line px-4 py-6 text-sm text-muted">
+                  <div className="rounded-[18px] border border-dashed border-line px-4 py-6 text-sm text-muted">
                     No lessons in this section yet.
                   </div>
                 ) : null}
@@ -202,7 +251,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                   const isEditingLesson = editingLessonId === lesson.id;
 
                   return (
-                    <article key={lesson.id} className="rounded-[24px] border border-line bg-surface-strong/70 p-4">
+                    <article key={lesson.id} className="rounded-[18px] border border-line bg-surface-strong/70 p-4">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="flex flex-1 items-start gap-3">
                           <form action={toggleLessonCompletionAction} className="pt-1">
@@ -212,7 +261,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                               aria-label={lesson.completed ? "Mark lesson incomplete" : "Mark lesson complete"}
                               className={`flex h-6 w-6 items-center justify-center rounded-full border ${
                                 lesson.completed
-                                  ? "border-success bg-success text-white"
+                                  ? "border-success bg-success text-[#0f1412]"
                                   : "border-line bg-surface text-transparent"
                               }`}
                             >
@@ -227,7 +276,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                                 {formatMinutes(lesson.duration_minutes)}
                               </span>
                               {lesson.completed ? (
-                                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                <span className="rounded-full border border-accent/40 bg-accent-soft px-3 py-1 text-xs font-semibold text-accent">
                                   Completed
                                 </span>
                               ) : null}
@@ -242,27 +291,31 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                               href={lesson.video_url}
                               target="_blank"
                               rel="noreferrer"
-                              className="rounded-full border border-line px-4 py-2 text-sm font-medium"
+                              className="rounded-full border border-line px-4 py-2 text-sm font-medium transition hover:bg-surface"
                             >
                               Open Video
                             </a>
                           ) : null}
-                          <button
-                            type="button"
-                            onClick={() => setEditingLessonId(isEditingLesson ? null : lesson.id)}
-                            className="rounded-full border border-line px-4 py-2 text-sm font-medium"
-                          >
-                            {isEditingLesson ? "Close edit" : "Edit lesson"}
-                          </button>
-                          <form action={deleteLessonAction}>
-                            <input type="hidden" name="lesson_id" value={lesson.id} />
-                            <input type="hidden" name="course_id" value={course.id} />
-                            <SubmitButton className="bg-transparent text-foreground soft-ring border border-line">Delete</SubmitButton>
-                          </form>
+                          {!isTrackMode ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setEditingLessonId(isEditingLesson ? null : lesson.id)}
+                                className="rounded-full border border-line px-4 py-2 text-sm font-medium transition hover:bg-surface"
+                              >
+                                {isEditingLesson ? "Close edit" : "Edit lesson"}
+                              </button>
+                              <form action={deleteLessonAction}>
+                                <input type="hidden" name="lesson_id" value={lesson.id} />
+                                <input type="hidden" name="course_id" value={course.id} />
+                                <SubmitButton variant="outline" className="soft-ring">Delete</SubmitButton>
+                              </form>
+                            </>
+                          ) : null}
                         </div>
                       </div>
 
-                      {isEditingLesson ? (
+                      {!isTrackMode && isEditingLesson ? (
                         <form action={updateLessonAction} className="mt-5 grid gap-4 border-t border-line pt-5 lg:grid-cols-2">
                           <input type="hidden" name="lesson_id" value={lesson.id} />
                           <input type="hidden" name="course_id" value={course.id} />
@@ -272,7 +325,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                               name="title"
                               required
                               defaultValue={lesson.title}
-                              className="w-full rounded-2xl border border-line bg-background/60 px-4 py-3 outline-none focus:border-accent"
+                              className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                             />
                           </label>
                           <label className="space-y-2">
@@ -283,7 +336,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                               min="0"
                               required
                               defaultValue={lesson.duration_minutes}
-                              className="w-full rounded-2xl border border-line bg-background/60 px-4 py-3 outline-none focus:border-accent"
+                              className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                             />
                           </label>
                           <label className="space-y-2">
@@ -292,7 +345,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                               name="video_url"
                               type="url"
                               defaultValue={lesson.video_url ?? ""}
-                              className="w-full rounded-2xl border border-line bg-background/60 px-4 py-3 outline-none focus:border-accent"
+                              className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                             />
                           </label>
                           <label className="space-y-2">
@@ -302,7 +355,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                               type="number"
                               min="1"
                               defaultValue={lesson.sort_order}
-                              className="w-full rounded-2xl border border-line bg-background/60 px-4 py-3 outline-none focus:border-accent"
+                              className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                             />
                           </label>
                           <div className="lg:col-span-2">
@@ -313,7 +366,7 @@ export function CourseDetailManager({ course }: CourseDetailManagerProps) {
                     </article>
                   );
                 })}
-              </div>
+              </div> : null}
             </section>
           );
         })}

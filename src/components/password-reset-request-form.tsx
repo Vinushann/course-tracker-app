@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requestPasswordResetAction } from "@/app/actions/auth";
 import { APP_NAME } from "@/lib/constants";
 import { SubmitButton } from "@/components/submit-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type PasswordResetRequestFormProps = {
   message?: string;
@@ -12,6 +13,9 @@ export function PasswordResetRequestForm({ message, success }: PasswordResetRequ
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="soft-ring w-full max-w-md rounded-xl border border-line bg-surface p-6">
+        <div className="mb-5 flex justify-end">
+          <ThemeToggle />
+        </div>
         <div className="space-y-3">
           <p className="text-sm uppercase tracking-[0.28em] text-muted">Password recovery</p>
           <h1 className="text-3xl font-semibold tracking-tight">{APP_NAME}</h1>

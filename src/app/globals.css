@@ -1,6 +1,18 @@
 @import "tailwindcss";
 
 :root {
+  --background: #f6f7f4;
+  --surface: #ffffff;
+  --surface-strong: #eef1ed;
+  --foreground: #18201c;
+  --muted: #68746d;
+  --line: rgba(24, 32, 28, 0.11);
+  --accent: #4f9d73;
+  --accent-soft: rgba(79, 157, 115, 0.14);
+  --success: #4f9d73;
+}
+
+[data-theme="dark"] {
   --background: #101317;
   --surface: #171b21;
   --surface-strong: #20262e;
@@ -31,8 +43,12 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
   background: var(--background);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
@@ -58,12 +74,22 @@ textarea {
 }
 
 .soft-ring {
+  box-shadow: 0 0 0 1px rgba(24, 32, 28, 0.02);
+}
+
+[data-theme="dark"] .soft-ring {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 .panel-grid {
   background-image:
+    linear-gradient(rgba(24, 32, 28, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24, 32, 28, 0.025) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+[data-theme="dark"] .panel-grid {
+  background-image:
     linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 24px 24px;
 }

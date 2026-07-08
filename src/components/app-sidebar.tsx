@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { BookOpen, LayoutDashboard, LogOut } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
 import { SubmitButton } from "@/components/submit-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { APP_NAME } from "@/lib/constants";
 
 type AppSidebarProps = {
@@ -75,6 +76,8 @@ export function AppSidebar({ email }: AppSidebarProps) {
         Build the course once. Track the lessons daily. Keep the screen quiet
         enough that your next action stays obvious.
       </div>
+
+      <ThemeToggle />
 
       <form action={logoutAction} className="mt-auto">
         <SubmitButton className="w-full" variant="dark">

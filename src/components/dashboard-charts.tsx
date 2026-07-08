@@ -65,7 +65,7 @@ export function DashboardCharts({ summary }: DashboardChartsProps) {
               <CartesianGrid
                 strokeDasharray="3 3"
                 vertical={false}
-                stroke="rgba(255, 255, 255, 0.06)"
+                stroke="var(--line)"
               />
               <XAxis dataKey="day" tickLine={false} axisLine={false} />
               <YAxis tickLine={false} axisLine={false} />
@@ -87,7 +87,7 @@ export function DashboardCharts({ summary }: DashboardChartsProps) {
               <CartesianGrid
                 strokeDasharray="3 3"
                 vertical={false}
-                stroke="rgba(255, 255, 255, 0.06)"
+                stroke="var(--line)"
               />
               <XAxis dataKey="name" tickLine={false} axisLine={false} />
               <YAxis tickLine={false} axisLine={false} domain={[0, 100]} />

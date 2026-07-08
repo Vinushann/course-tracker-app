@@ -46,6 +46,28 @@ export function parseRequiredNumber(value: FormDataEntryValue | null) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export function parseDurationMinutesFromFields(
+  hoursValue: FormDataEntryValue | null,
+  minutesValue: FormDataEntryValue | null,
+) {
+  const hours = Math.max(0, Math.floor(Number(hoursValue?.toString() ?? "0")));
+  const minutes = Math.max(0, Math.floor(Number(minutesValue?.toString() ?? "0")));
+
+  const safeHours = Number.isFinite(hours) ? hours : 0;
+  const safeMinutes = Number.isFinite(minutes) ? minutes : 0;
+
+  return safeHours * 60 + safeMinutes;
+}
+
+export function splitDurationMinutes(totalMinutes: number) {
+  const safeMinutes = Math.max(0, Math.floor(totalMinutes));
+
+  return {
+    hours: Math.floor(safeMinutes / 60),
+    minutes: safeMinutes % 60,
+  };
+}
+
 export function parseText(value: FormDataEntryValue | null) {
   const raw = value?.toString().trim();
   return raw ? raw : null;

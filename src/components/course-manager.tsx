@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { createCourseAction, deleteCourseAction, updateCourseAction } from "@/app/actions/courses";
 import { SubmitButton } from "@/components/submit-button";
-import { getCourseProgress } from "@/lib/progress";
+import { getCourseProgress, getNextLesson } from "@/lib/progress";
 import type { CourseBlueprintSectionInput, CourseWithSections } from "@/lib/types";
 import { formatDate, formatMinutes } from "@/lib/utils";
 
@@ -19,6 +19,7 @@ const DEFAULT_LESSON_COUNT = 1;
 function createDraftLesson() {
   return {
     title: "",
+    duration_hours: "",
     duration_minutes: "",
     video_url: "",
   };
@@ -45,7 +46,9 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
       title: section.title.trim(),
       lessons: section.lessons.map((lesson) => ({
         title: lesson.title.trim(),
-        duration_minutes: Number.isFinite(Number(lesson.duration_minutes)) ? Number(lesson.duration_minutes) : 0,
+        duration_minutes:
+          (Number.isFinite(Number(lesson.duration_hours)) ? Number(lesson.duration_hours) : 0) * 60 +
+          (Number.isFinite(Number(lesson.duration_minutes)) ? Number(lesson.duration_minutes) : 0),
         video_url: lesson.video_url.trim() || null,
       })),
     }));
@@ -62,7 +65,7 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
   function updateLessonField(
     sectionIndex: number,
     lessonIndex: number,
-    field: "title" | "duration_minutes" | "video_url",
+    field: "title" | "duration_hours" | "duration_minutes" | "video_url",
     value: string,
   ) {
     setCourseStructure((current) =>
@@ -241,13 +244,25 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
                             </button>
                           ) : null}
                         </div>
-                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_160px_minmax(0,1.2fr)]">
+                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_120px_120px_minmax(0,1.2fr)]">
                           <label className="space-y-2">
                             <span className="text-sm font-medium">Lesson title</span>
                             <input
                               value={lesson.title}
                               onChange={(event) =>
                                 updateLessonField(sectionIndex, lessonIndex, "title", event.target.value)
+                              }
+                              className="w-full rounded-[16px] border border-line bg-surface px-4 py-3 outline-none focus:border-accent"
+                            />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-sm font-medium">Hours</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={lesson.duration_hours}
+                              onChange={(event) =>
+                                updateLessonField(sectionIndex, lessonIndex, "duration_hours", event.target.value)
                               }
                               className="w-full rounded-[16px] border border-line bg-surface px-4 py-3 outline-none focus:border-accent"
                             />
@@ -312,6 +327,7 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
       <div className="grid gap-5 lg:grid-cols-2">
         {courses.map((course) => {
           const progress = getCourseProgress(course);
+          const nextLesson = getNextLesson(course);
           const isEditing = editingCourseId === course.id;
 
           return (
@@ -355,6 +371,47 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
                 <p>Total tracked time: {formatMinutes(progress.totalMinutes)}</p>
                 <p>Completed lessons: {progress.completedLessonsCount}</p>
                 <p>Total lessons: {progress.totalLessonsCount}</p>
+              </div>
+
+              <div className="mt-5 rounded-[18px] border border-line bg-surface-strong/60 p-4">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Start here</p>
+                {nextLesson ? (
+                  <>
+                    <p className="mt-2 text-base font-semibold text-foreground">{nextLesson.lessonTitle}</p>
+                    <p className="mt-1 text-sm text-muted">
+                      Section {nextLesson.sectionSortOrder}: {nextLesson.sectionTitle}
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
+                      Lesson {nextLesson.lessonSortOrder}
+                      {nextLesson.durationMinutes > 0 ? ` • ${formatMinutes(nextLesson.durationMinutes)}` : ""}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <Link
+                        href={`/courses/${course.id}?mode=track`}
+                        className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-[#0f1412]"
+                      >
+                        Resume here
+                      </Link>
+                      {nextLesson.videoUrl ? (
+                        <a
+                          href={nextLesson.videoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-foreground"
+                        >
+                          Open next video
+                        </a>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-2 text-base font-semibold text-foreground">Course complete</p>
+                    <p className="mt-1 text-sm text-muted">
+                      You have finished every lesson in this course.
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="mt-6 flex flex-wrap gap-3">

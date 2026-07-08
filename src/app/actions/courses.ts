@@ -6,7 +6,13 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureProfile, getCourseById } from "@/lib/data";
 import { getNextSortOrder } from "@/lib/progress";
 import type { CourseBlueprintSectionInput } from "@/lib/types";
-import { isValidUrl, parseOptionalNumber, parseRequiredNumber, parseText } from "@/lib/utils";
+import {
+  isValidUrl,
+  parseDurationMinutesFromFields,
+  parseOptionalNumber,
+  parseRequiredNumber,
+  parseText,
+} from "@/lib/utils";
 
 async function getSessionContext() {
   const supabase = await createClient();
@@ -256,7 +262,10 @@ export async function createLessonAction(formData: FormData) {
     course_id: courseId,
     section_id: sectionId,
     title: formData.get("title")?.toString().trim() || "Untitled lesson",
-    duration_minutes: parseRequiredNumber(formData.get("duration_minutes")),
+    duration_minutes: parseDurationMinutesFromFields(
+      formData.get("duration_hours"),
+      formData.get("duration_minutes"),
+    ),
     video_url: videoUrl,
     sort_order: getNextSortOrder(section?.lessons ?? []),
   });
@@ -282,7 +291,10 @@ export async function updateLessonAction(formData: FormData) {
     .from("lessons")
     .update({
       title: formData.get("title")?.toString().trim() || "Untitled lesson",
-      duration_minutes: parseRequiredNumber(formData.get("duration_minutes")),
+      duration_minutes: parseDurationMinutesFromFields(
+        formData.get("duration_hours"),
+        formData.get("duration_minutes"),
+      ),
       video_url: videoUrl,
       sort_order: parseRequiredNumber(formData.get("sort_order")),
     })

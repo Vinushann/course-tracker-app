@@ -62,6 +62,17 @@ export type CourseProgressSummary = {
   totalLessonsCount: number;
 };
 
+export type CourseNextLesson = {
+  sectionId: string;
+  sectionTitle: string;
+  sectionSortOrder: number;
+  lessonId: string;
+  lessonTitle: string;
+  lessonSortOrder: number;
+  durationMinutes: number;
+  videoUrl: string | null;
+};
+
 export type DashboardSummary = {
   totalCourses: number;
   totalCompletedLessons: number;

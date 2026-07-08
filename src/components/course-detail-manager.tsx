@@ -13,7 +13,7 @@ import {
 import { SubmitButton } from "@/components/submit-button";
 import { getCourseProgress, getLessonCompletionTimestamp, getSectionProgress } from "@/lib/progress";
 import type { CourseWithSections } from "@/lib/types";
-import { formatMinutes } from "@/lib/utils";
+import { formatMinutes, splitDurationMinutes } from "@/lib/utils";
 
 type CourseDetailManagerProps = {
   course: CourseWithSections;
@@ -216,16 +216,29 @@ export function CourseDetailManager({ course, mode = "manage" }: CourseDetailMan
                       className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                     />
                   </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium">Duration in minutes</span>
-                    <input
-                      name="duration_minutes"
-                      type="number"
-                      min="0"
-                      required
-                      className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
-                    />
-                  </label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium">Hours</span>
+                      <input
+                        name="duration_hours"
+                        type="number"
+                        min="0"
+                        defaultValue="0"
+                        className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium">Minutes</span>
+                      <input
+                        name="duration_minutes"
+                        type="number"
+                        min="0"
+                        required
+                        defaultValue="0"
+                        className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
+                      />
+                    </label>
+                  </div>
                   <label className="space-y-2 lg:col-span-2">
                     <span className="text-sm font-medium">Video URL (optional)</span>
                     <input
@@ -249,6 +262,7 @@ export function CourseDetailManager({ course, mode = "manage" }: CourseDetailMan
 
                 {section.lessons.map((lesson) => {
                   const isEditingLesson = editingLessonId === lesson.id;
+                  const lessonDuration = splitDurationMinutes(lesson.duration_minutes);
 
                   return (
                     <article key={lesson.id} className="rounded-[18px] border border-line bg-surface-strong/70 p-4">
@@ -328,17 +342,30 @@ export function CourseDetailManager({ course, mode = "manage" }: CourseDetailMan
                               className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                             />
                           </label>
-                          <label className="space-y-2">
-                            <span className="text-sm font-medium">Duration in minutes</span>
-                            <input
-                              name="duration_minutes"
-                              type="number"
-                              min="0"
-                              required
-                              defaultValue={lesson.duration_minutes}
-                              className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
-                            />
-                          </label>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <label className="space-y-2">
+                              <span className="text-sm font-medium">Hours</span>
+                              <input
+                                name="duration_hours"
+                                type="number"
+                                min="0"
+                                required
+                                defaultValue={lessonDuration.hours}
+                                className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
+                              />
+                            </label>
+                            <label className="space-y-2">
+                              <span className="text-sm font-medium">Minutes</span>
+                              <input
+                                name="duration_minutes"
+                                type="number"
+                                min="0"
+                                required
+                                defaultValue={lessonDuration.minutes}
+                                className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
+                              />
+                            </label>
+                          </div>
                           <label className="space-y-2">
                             <span className="text-sm font-medium">Video URL</span>
                             <input

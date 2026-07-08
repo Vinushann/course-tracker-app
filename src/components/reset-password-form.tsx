@@ -11,16 +11,16 @@ type ResetPasswordFormProps = {
 export function ResetPasswordForm({ message, success }: ResetPasswordFormProps) {
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
-      <div className="card-shadow soft-ring w-full max-w-md rounded-[28px] border border-line bg-surface p-8">
+      <div className="soft-ring w-full max-w-md rounded-xl border border-line bg-surface p-6">
         <div className="space-y-3">
           <p className="text-sm uppercase tracking-[0.28em] text-muted">Choose a new password</p>
-          <h1 className="text-4xl font-semibold tracking-tight">{APP_NAME}</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">{APP_NAME}</h1>
           <p className="text-sm leading-6 text-muted">
             Set a new password for your account, then use it to log back in.
           </p>
         </div>
 
-        <form action={updatePasswordAction} className="mt-8 space-y-4">
+        <form action={updatePasswordAction} className="mt-6 space-y-4">
           <label className="block space-y-2">
             <span className="text-sm font-medium">New password</span>
             <input
@@ -28,7 +28,7 @@ export function ResetPasswordForm({ message, success }: ResetPasswordFormProps) 
               name="password"
               required
               minLength={6}
-              className="w-full rounded-2xl border border-line bg-surface-strong/90 px-4 py-3 outline-none transition focus:border-accent"
+              className="w-full rounded-lg border border-line bg-background/30 px-4 py-3 outline-none transition focus:border-accent"
               placeholder="Minimum 6 characters"
             />
           </label>
@@ -40,17 +40,17 @@ export function ResetPasswordForm({ message, success }: ResetPasswordFormProps) 
               name="confirm_password"
               required
               minLength={6}
-              className="w-full rounded-2xl border border-line bg-surface-strong/90 px-4 py-3 outline-none transition focus:border-accent"
+              className="w-full rounded-lg border border-line bg-background/30 px-4 py-3 outline-none transition focus:border-accent"
               placeholder="Repeat your new password"
             />
           </label>
 
           {message ? (
-            <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{message}</p>
+            <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{message}</p>
           ) : null}
 
           {success ? (
-            <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               {success}
             </p>
           ) : null}

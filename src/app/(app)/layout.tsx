@@ -17,7 +17,7 @@ export default async function ProtectedLayout({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1500px] flex-1 flex-col gap-6 px-4 py-6 lg:flex-row lg:px-6">
+    <div className="mx-auto flex w-full max-w-[1500px] flex-1 flex-col gap-5 px-4 py-5 lg:flex-row lg:px-5">
       <AppSidebar email={user.email ?? "Signed in"} />
       <main className="min-w-0 flex-1">{children}</main>
     </div>

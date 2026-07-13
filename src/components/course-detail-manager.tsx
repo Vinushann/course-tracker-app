@@ -1,18 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useOptimistic, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
+  createSectionFromJsonAction,
   createLessonAction,
   createSectionAction,
   deleteLessonAction,
   deleteSectionAction,
-  toggleLessonCompletionAction,
+  importSectionJsonAction,
+  setLessonCompletionAction,
+  setSectionLessonsCompletionAction,
   updateLessonAction,
   updateSectionAction,
 } from "@/app/actions/courses";
 import { SubmitButton } from "@/components/submit-button";
 import { getCourseProgress, getLessonCompletionTimestamp, getSectionProgress } from "@/lib/progress";
-import type { CourseWithSections } from "@/lib/types";
+import type { CourseWithSections, Lesson, SectionWithLessons } from "@/lib/types";
 import { formatMinutes, splitDurationMinutes } from "@/lib/utils";
 
 type CourseDetailManagerProps = {
@@ -20,19 +24,166 @@ type CourseDetailManagerProps = {
   mode?: "manage" | "track";
 };
 
+const SUBSECTION_JSON_TEMPLATE = `{
+  "title": "SQL Basics",
+  "lessons": [
+    {
+      "title": "Introduction to SQL",
+      "duration_minutes": 12,
+      "video_url": ""
+    },
+    {
+      "title": "Installing PostgreSQL",
+      "duration_minutes": 18,
+      "video_url": ""
+    }
+  ]
+}`;
+
+function updateLessonCompletionState(lesson: Lesson, completed: boolean, timestamp: string | null) {
+  return {
+    ...lesson,
+    completed,
+    completed_at: timestamp,
+  };
+}
+
+function updateCourseLessonCompletion(
+  sourceCourse: CourseWithSections,
+  lessonId: string,
+  completed: boolean,
+  timestamp: string | null,
+) {
+  return {
+    ...sourceCourse,
+    sections: sourceCourse.sections.map((section) => ({
+      ...section,
+      lessons: section.lessons.map((lesson) =>
+        lesson.id === lessonId ? updateLessonCompletionState(lesson, completed, timestamp) : lesson,
+      ),
+    })),
+  };
+}
+
+function updateCourseSectionCompletion(
+  sourceCourse: CourseWithSections,
+  sectionId: string,
+  completed: boolean,
+  timestamp: string | null,
+) {
+  return {
+    ...sourceCourse,
+    sections: sourceCourse.sections.map((section) =>
+      section.id === sectionId
+        ? {
+            ...section,
+            lessons: section.lessons.map((lesson) =>
+              updateLessonCompletionState(lesson, completed, timestamp),
+            ),
+          }
+        : section,
+    ),
+  };
+}
+
 export function CourseDetailManager({ course, mode = "manage" }: CourseDetailManagerProps) {
+  const router = useRouter();
   const isTrackMode = mode === "track";
+  const [isPending, startTransition] = useTransition();
   const [showSectionForm, setShowSectionForm] = useState(course.sections.length === 0);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
   const [openLessonFormSectionId, setOpenLessonFormSectionId] = useState<string | null>(course.sections[0]?.id ?? null);
   const [openSectionIds, setOpenSectionIds] = useState<string[]>(course.sections[0]?.id ? [course.sections[0].id] : []);
-  const progress = getCourseProgress(course);
+  const [pendingLessonIds, setPendingLessonIds] = useState<string[]>([]);
+  const [pendingSectionIds, setPendingSectionIds] = useState<string[]>([]);
+  const [optimisticCourse, applyOptimisticCourse] = useOptimistic(
+    course,
+    (
+      currentCourse,
+      action:
+        | { type: "lesson"; lessonId: string; completed: boolean; timestamp: string | null }
+        | { type: "section"; sectionId: string; completed: boolean; timestamp: string | null },
+    ) => {
+      if (action.type === "lesson") {
+        return updateCourseLessonCompletion(
+          currentCourse,
+          action.lessonId,
+          action.completed,
+          action.timestamp,
+        );
+      }
+
+      return updateCourseSectionCompletion(
+        currentCourse,
+        action.sectionId,
+        action.completed,
+        action.timestamp,
+      );
+    },
+  );
+  const progress = getCourseProgress(optimisticCourse);
 
   function toggleSection(sectionId: string) {
     setOpenSectionIds((current) =>
       current.includes(sectionId) ? current.filter((id) => id !== sectionId) : [...current, sectionId],
     );
+  }
+
+  function handleLessonCompletionChange(lessonId: string, completed: boolean) {
+    const timestamp = completed ? new Date().toISOString() : null;
+
+    setPendingLessonIds((current) => (current.includes(lessonId) ? current : [...current, lessonId]));
+
+    startTransition(() => {
+      applyOptimisticCourse({
+        type: "lesson",
+        lessonId,
+        completed,
+        timestamp,
+      });
+
+      void (async () => {
+        try {
+          await setLessonCompletionAction({ lessonId, completed });
+        } catch {
+          router.refresh();
+        } finally {
+          setPendingLessonIds((current) => current.filter((id) => id !== lessonId));
+          router.refresh();
+        }
+      })();
+    });
+  }
+
+  function handleSectionCompletionChange(section: SectionWithLessons, completed: boolean) {
+    const timestamp = completed ? new Date().toISOString() : null;
+
+    setPendingSectionIds((current) => (current.includes(section.id) ? current : [...current, section.id]));
+
+    startTransition(() => {
+      applyOptimisticCourse({
+        type: "section",
+        sectionId: section.id,
+        completed,
+        timestamp,
+      });
+
+      void (async () => {
+        try {
+          await setSectionLessonsCompletionAction({
+            courseId: optimisticCourse.id,
+            sectionId: section.id,
+            completed,
+          });
+        } catch {
+          router.refresh();
+        } finally {
+          setPendingSectionIds((current) => current.filter((id) => id !== section.id));
+          router.refresh();
+        }
+      })();
+    });
   }
 
   return (
@@ -101,24 +252,55 @@ export function CourseDetailManager({ course, mode = "manage" }: CourseDetailMan
           </div>
 
           {showSectionForm ? (
-            <form action={createSectionAction} className="mt-6 flex flex-col gap-4 sm:flex-row">
-              <input type="hidden" name="course_id" value={course.id} />
-              <input
-                name="title"
-                required
-                className="min-w-0 flex-1 rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
-              />
-              <SubmitButton>Add section</SubmitButton>
-            </form>
+            <div className="mt-6 grid gap-6 xl:grid-cols-2">
+              <form action={createSectionAction} className="flex flex-col gap-4">
+                <input type="hidden" name="course_id" value={course.id} />
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Section title</span>
+                  <input
+                    name="title"
+                    required
+                    className="min-w-0 flex-1 rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
+                  />
+                </label>
+                <div>
+                  <SubmitButton>Add section</SubmitButton>
+                </div>
+              </form>
+
+              <div className="rounded-[18px] border border-line bg-surface-strong/40 p-4">
+                <p className="text-sm font-semibold">Create a section from JSON</p>
+                <p className="mt-2 text-sm text-muted">
+                  Paste one subsection JSON block to create the section and all of its lessons instantly.
+                </p>
+                <pre className="mt-4 overflow-x-auto rounded-[16px] border border-line bg-surface px-4 py-4 text-xs leading-6 text-muted">
+                  {SUBSECTION_JSON_TEMPLATE}
+                </pre>
+                <form action={createSectionFromJsonAction} className="mt-4 space-y-4">
+                  <input type="hidden" name="course_id" value={course.id} />
+                  <textarea
+                    name="subsection_json"
+                    rows={10}
+                    required
+                    defaultValue={SUBSECTION_JSON_TEMPLATE}
+                    className="w-full rounded-[16px] border border-line bg-surface px-4 py-3 font-mono text-sm outline-none focus:border-accent"
+                  />
+                  <SubmitButton>Create section from JSON</SubmitButton>
+                </form>
+              </div>
+            </div>
           ) : null}
         </section>
       ) : null}
 
       <div className="space-y-5">
-        {course.sections.map((section) => {
+        {optimisticCourse.sections.map((section) => {
           const isEditingSection = editingSectionId === section.id;
           const sectionProgress = getSectionProgress(section);
           const isSectionOpen = openSectionIds.includes(section.id);
+          const isSectionPending = pendingSectionIds.includes(section.id);
+          const allLessonsCompleted =
+            section.lessons.length > 0 && section.lessons.every((lesson) => lesson.completed);
 
           return (
             <section key={section.id} className="soft-ring rounded-[24px] border border-line bg-surface p-6">
@@ -167,8 +349,18 @@ export function CourseDetailManager({ course, mode = "manage" }: CourseDetailMan
                     </form>
                   </div>
                 ) : (
-                  <div className="rounded-full border border-accent/30 bg-accent-soft px-4 py-2 text-sm font-semibold text-accent">
-                    {sectionProgress.progressPercentage}% tracked
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isSectionPending || section.lessons.length === 0 || isPending}
+                      onClick={() => handleSectionCompletionChange(section, !allLessonsCompleted)}
+                      className="rounded-full border border-accent/30 bg-accent-soft px-4 py-2 text-sm font-semibold text-accent transition disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isSectionPending ? "Updating..." : allLessonsCompleted ? "Clear all" : "Complete all"}
+                    </button>
+                    <div className="rounded-full border border-accent/30 bg-accent-soft px-4 py-2 text-sm font-semibold text-accent">
+                      {sectionProgress.progressPercentage}% tracked
+                    </div>
                   </div>
                 )}
               </div>
@@ -202,6 +394,27 @@ export function CourseDetailManager({ course, mode = "manage" }: CourseDetailMan
                   />
                   <SubmitButton>Save section</SubmitButton>
                 </form>
+              ) : null}
+
+              {isSectionOpen && !isTrackMode ? (
+                <div className="mt-5 rounded-[18px] border border-line bg-surface-strong/35 p-4">
+                  <p className="text-sm font-semibold">Replace this subsection with JSON</p>
+                  <p className="mt-2 text-sm text-muted">
+                    This updates the subsection title and replaces its current lessons with the pasted JSON.
+                  </p>
+                  <form action={importSectionJsonAction} className="mt-4 space-y-4">
+                    <input type="hidden" name="course_id" value={course.id} />
+                    <input type="hidden" name="section_id" value={section.id} />
+                    <textarea
+                      name="subsection_json"
+                      rows={8}
+                      required
+                      defaultValue={SUBSECTION_JSON_TEMPLATE}
+                      className="w-full rounded-[16px] border border-line bg-surface px-4 py-3 font-mono text-sm outline-none focus:border-accent"
+                    />
+                    <SubmitButton variant="outline">Apply subsection JSON</SubmitButton>
+                  </form>
+                </div>
               ) : null}
 
               {isSectionOpen && !isTrackMode && openLessonFormSectionId === section.id ? (
@@ -263,25 +476,27 @@ export function CourseDetailManager({ course, mode = "manage" }: CourseDetailMan
                 {section.lessons.map((lesson) => {
                   const isEditingLesson = editingLessonId === lesson.id;
                   const lessonDuration = splitDurationMinutes(lesson.duration_minutes);
+                  const isLessonPending = pendingLessonIds.includes(lesson.id);
 
                   return (
                     <article key={lesson.id} className="rounded-[18px] border border-line bg-surface-strong/70 p-4">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="flex flex-1 items-start gap-3">
-                          <form action={toggleLessonCompletionAction} className="pt-1">
-                            <input type="hidden" name="lesson_id" value={lesson.id} />
+                          <div className="pt-1">
                             <button
-                              type="submit"
+                              type="button"
+                              disabled={isLessonPending || isPending}
+                              onClick={() => handleLessonCompletionChange(lesson.id, !lesson.completed)}
                               aria-label={lesson.completed ? "Mark lesson incomplete" : "Mark lesson complete"}
-                              className={`flex h-6 w-6 items-center justify-center rounded-full border ${
+                              className={`flex h-6 w-6 items-center justify-center rounded-full border transition ${
                                 lesson.completed
                                   ? "border-success bg-success text-[#0f1412]"
                                   : "border-line bg-surface text-transparent"
-                              }`}
+                              } ${isLessonPending ? "opacity-70" : ""} disabled:cursor-not-allowed`}
                             >
                               ✓
                             </button>
-                          </form>
+                          </div>
 
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-3">

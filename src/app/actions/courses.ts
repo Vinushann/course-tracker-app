@@ -16,7 +16,7 @@ import {
 
 async function getSessionContext() {
   const supabase = await createClient();
-  const user = await ensureProfile();
+  const user = await ensureProfile(supabase);
 
   if (!user) {
     redirect("/login");
@@ -85,6 +85,104 @@ function parseCourseBlueprint(formData: FormData) {
     }
 
     throw new Error("Course structure could not be parsed.");
+  }
+}
+
+function parseSubsectionJson(rawJson: string) {
+  try {
+    const parsed = JSON.parse(rawJson) as {
+      title?: unknown;
+      lessons?: Array<{
+        title?: unknown;
+        duration_minutes?: unknown;
+        video_url?: unknown;
+      }>;
+    };
+
+    if (typeof parsed.title !== "string" || parsed.title.trim().length === 0) {
+      throw new Error("The subsection JSON needs a title.");
+    }
+
+    if (!Array.isArray(parsed.lessons) || parsed.lessons.length === 0) {
+      throw new Error("The subsection JSON needs at least one lesson.");
+    }
+
+    return {
+      title: parsed.title.trim(),
+      lessons: parsed.lessons.map((lesson, lessonIndex) => {
+        if (typeof lesson?.title !== "string" || lesson.title.trim().length === 0) {
+          throw new Error(`Lesson ${lessonIndex + 1} needs a title.`);
+        }
+
+        const videoUrl = typeof lesson.video_url === "string" ? lesson.video_url.trim() || null : null;
+
+        if (!isValidUrl(videoUrl)) {
+          throw new Error(`Lesson ${lessonIndex + 1} has an invalid video URL.`);
+        }
+
+        const durationValue =
+          typeof lesson.duration_minutes === "number"
+            ? lesson.duration_minutes
+            : Number(lesson.duration_minutes ?? 0);
+
+        return {
+          title: lesson.title.trim(),
+          duration_minutes: Number.isFinite(durationValue) ? Math.max(0, Math.floor(durationValue)) : 0,
+          video_url: videoUrl,
+        };
+      }),
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error("Subsection JSON could not be parsed.");
+  }
+}
+
+async function syncActivityLogForLesson(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  lesson: {
+    id: string;
+    course_id: string;
+    section_id: string;
+    duration_minutes: number;
+  },
+  completed: boolean,
+  timestamp: string,
+) {
+  if (completed) {
+    const { error } = await supabase.from("activity_logs").upsert(
+      {
+        user_id: userId,
+        course_id: lesson.course_id,
+        section_id: lesson.section_id,
+        lesson_id: lesson.id,
+        duration_minutes: lesson.duration_minutes,
+        completed_at: timestamp,
+      },
+      {
+        onConflict: "user_id,lesson_id",
+      },
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return;
+  }
+
+  const { error } = await supabase
+    .from("activity_logs")
+    .delete()
+    .eq("user_id", userId)
+    .eq("lesson_id", lesson.id);
+
+  if (error) {
+    throw error;
   }
 }
 
@@ -186,7 +284,7 @@ export async function deleteCourseAction(formData: FormData) {
 export async function createSectionAction(formData: FormData) {
   const { supabase, user } = await getSessionContext();
   const courseId = formData.get("course_id")?.toString() ?? "";
-  const course = await getCourseById(courseId);
+  const course = await getCourseById(courseId, supabase);
 
   if (!course) {
     return;
@@ -201,6 +299,52 @@ export async function createSectionAction(formData: FormData) {
 
   if (error) {
     throw error;
+  }
+
+  revalidateLearningPaths(courseId);
+}
+
+export async function createSectionFromJsonAction(formData: FormData) {
+  const { supabase, user } = await getSessionContext();
+  const courseId = formData.get("course_id")?.toString() ?? "";
+  const rawJson = formData.get("subsection_json")?.toString().trim() ?? "";
+  const course = await getCourseById(courseId, supabase);
+
+  if (!course) {
+    return;
+  }
+
+  const subsection = parseSubsectionJson(rawJson);
+
+  const { data: createdSection, error: sectionError } = await supabase
+    .from("sections")
+    .insert({
+      user_id: user.id,
+      course_id: courseId,
+      title: subsection.title,
+      sort_order: getNextSortOrder(course.sections),
+    })
+    .select("id")
+    .single();
+
+  if (sectionError || !createdSection) {
+    throw sectionError ?? new Error("Section could not be created from JSON.");
+  }
+
+  const lessonsPayload = subsection.lessons.map((lesson, lessonIndex) => ({
+    user_id: user.id,
+    course_id: courseId,
+    section_id: createdSection.id,
+    title: lesson.title,
+    duration_minutes: lesson.duration_minutes,
+    video_url: lesson.video_url,
+    sort_order: lessonIndex + 1,
+  }));
+
+  const { error: lessonError } = await supabase.from("lessons").insert(lessonsPayload);
+
+  if (lessonError) {
+    throw lessonError;
   }
 
   revalidateLearningPaths(courseId);
@@ -227,6 +371,52 @@ export async function updateSectionAction(formData: FormData) {
   revalidateLearningPaths(courseId);
 }
 
+export async function importSectionJsonAction(formData: FormData) {
+  const { supabase, user } = await getSessionContext();
+  const sectionId = formData.get("section_id")?.toString() ?? "";
+  const courseId = formData.get("course_id")?.toString() ?? "";
+  const rawJson = formData.get("subsection_json")?.toString().trim() ?? "";
+  const subsection = parseSubsectionJson(rawJson);
+
+  const { error: sectionError } = await supabase
+    .from("sections")
+    .update({ title: subsection.title })
+    .eq("id", sectionId)
+    .eq("user_id", user.id);
+
+  if (sectionError) {
+    throw sectionError;
+  }
+
+  const { error: deleteLessonsError } = await supabase
+    .from("lessons")
+    .delete()
+    .eq("section_id", sectionId)
+    .eq("user_id", user.id);
+
+  if (deleteLessonsError) {
+    throw deleteLessonsError;
+  }
+
+  const lessonsPayload = subsection.lessons.map((lesson, lessonIndex) => ({
+    user_id: user.id,
+    course_id: courseId,
+    section_id: sectionId,
+    title: lesson.title,
+    duration_minutes: lesson.duration_minutes,
+    video_url: lesson.video_url,
+    sort_order: lessonIndex + 1,
+  }));
+
+  const { error: lessonError } = await supabase.from("lessons").insert(lessonsPayload);
+
+  if (lessonError) {
+    throw lessonError;
+  }
+
+  revalidateLearningPaths(courseId);
+}
+
 export async function deleteSectionAction(formData: FormData) {
   const { supabase, user } = await getSessionContext();
   const sectionId = formData.get("section_id")?.toString() ?? "";
@@ -244,7 +434,7 @@ export async function createLessonAction(formData: FormData) {
   const { supabase, user } = await getSessionContext();
   const courseId = formData.get("course_id")?.toString() ?? "";
   const sectionId = formData.get("section_id")?.toString() ?? "";
-  const course = await getCourseById(courseId);
+  const course = await getCourseById(courseId, supabase);
 
   if (!course) {
     return;
@@ -321,6 +511,113 @@ export async function deleteLessonAction(formData: FormData) {
   revalidateLearningPaths(courseId);
 }
 
+export async function setLessonCompletionAction(input: { lessonId: string; completed: boolean }) {
+  const { supabase, user } = await getSessionContext();
+  const { lessonId, completed } = input;
+
+  const { data: lesson, error: lessonError } = await supabase
+    .from("lessons")
+    .select("id, user_id, course_id, section_id, duration_minutes")
+    .eq("id", lessonId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (lessonError || !lesson) {
+    throw lessonError ?? new Error("Lesson not found.");
+  }
+
+  const timestamp = new Date().toISOString();
+
+  const { error: updateError } = await supabase
+    .from("lessons")
+    .update({
+      completed,
+      completed_at: completed ? timestamp : null,
+    })
+    .eq("id", lessonId)
+    .eq("user_id", user.id);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  await syncActivityLogForLesson(supabase, user.id, lesson, completed, timestamp);
+
+  revalidateLearningPaths(lesson.course_id);
+}
+
+export async function setSectionLessonsCompletionAction(input: {
+  courseId: string;
+  sectionId: string;
+  completed: boolean;
+}) {
+  const { supabase, user } = await getSessionContext();
+  const { courseId, sectionId, completed } = input;
+
+  const { data: lessons, error: lessonsError } = await supabase
+    .from("lessons")
+    .select("id, course_id, section_id, duration_minutes")
+    .eq("section_id", sectionId)
+    .eq("course_id", courseId)
+    .eq("user_id", user.id);
+
+  if (lessonsError) {
+    throw lessonsError;
+  }
+
+  if (!lessons || lessons.length === 0) {
+    revalidateLearningPaths(courseId);
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  const lessonIds = lessons.map((lesson) => lesson.id);
+
+  const { error: updateError } = await supabase
+    .from("lessons")
+    .update({
+      completed,
+      completed_at: completed ? timestamp : null,
+    })
+    .in("id", lessonIds)
+    .eq("user_id", user.id);
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  if (completed) {
+    const logsPayload = lessons.map((lesson) => ({
+      user_id: user.id,
+      course_id: lesson.course_id,
+      section_id: lesson.section_id,
+      lesson_id: lesson.id,
+      duration_minutes: lesson.duration_minutes,
+      completed_at: timestamp,
+    }));
+
+    const { error: upsertError } = await supabase.from("activity_logs").upsert(logsPayload, {
+      onConflict: "user_id,lesson_id",
+    });
+
+    if (upsertError) {
+      throw upsertError;
+    }
+  } else {
+    const { error: deleteError } = await supabase
+      .from("activity_logs")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("section_id", sectionId);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+  }
+
+  revalidateLearningPaths(courseId);
+}
+
 export async function toggleLessonCompletionAction(formData: FormData) {
   const { supabase, user } = await getSessionContext();
   const lessonId = formData.get("lesson_id")?.toString() ?? "";
@@ -336,14 +633,14 @@ export async function toggleLessonCompletionAction(formData: FormData) {
     throw lessonError ?? new Error("Lesson not found.");
   }
 
-  const nextCompleted = !lesson.completed;
+  const completed = !lesson.completed;
   const timestamp = new Date().toISOString();
 
   const { error: updateError } = await supabase
     .from("lessons")
     .update({
-      completed: nextCompleted,
-      completed_at: nextCompleted ? timestamp : null,
+      completed,
+      completed_at: completed ? timestamp : null,
     })
     .eq("id", lessonId)
     .eq("user_id", user.id);
@@ -352,43 +649,7 @@ export async function toggleLessonCompletionAction(formData: FormData) {
     throw updateError;
   }
 
-  if (nextCompleted) {
-    const { data: existingLog, error: existingError } = await supabase
-      .from("activity_logs")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("lesson_id", lesson.id)
-      .maybeSingle();
-
-    if (existingError) {
-      throw existingError;
-    }
-
-    if (!existingLog) {
-      const { error: insertError } = await supabase.from("activity_logs").insert({
-        user_id: user.id,
-        course_id: lesson.course_id,
-        section_id: lesson.section_id,
-        lesson_id: lesson.id,
-        duration_minutes: lesson.duration_minutes,
-        completed_at: timestamp,
-      });
-
-      if (insertError && insertError.code !== "23505") {
-        throw insertError;
-      }
-    }
-  } else {
-    const { error: deleteError } = await supabase
-      .from("activity_logs")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("lesson_id", lesson.id);
-
-    if (deleteError) {
-      throw deleteError;
-    }
-  }
+  await syncActivityLogForLesson(supabase, user.id, lesson, completed, timestamp);
 
   revalidateLearningPaths(lesson.course_id);
 }

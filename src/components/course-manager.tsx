@@ -13,6 +13,22 @@ type CourseManagerProps = {
   initialShowCreate?: boolean;
 };
 
+const SUBSECTION_JSON_TEMPLATE = `{
+  "title": "SQL Basics",
+  "lessons": [
+    {
+      "title": "Introduction to SQL",
+      "duration_minutes": 12,
+      "video_url": ""
+    },
+    {
+      "title": "Installing PostgreSQL",
+      "duration_minutes": 18,
+      "video_url": ""
+    }
+  ]
+}`;
+
 const DEFAULT_SECTION_COUNT = 1;
 const DEFAULT_LESSON_COUNT = 1;
 
@@ -29,6 +45,8 @@ function createDraftSection() {
   return {
     title: "",
     lessons: Array.from({ length: DEFAULT_LESSON_COUNT }, () => createDraftLesson()),
+    import_json: SUBSECTION_JSON_TEMPLATE,
+    import_status: null,
   };
 }
 
@@ -40,6 +58,22 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
   const [showCreate] = useState(courses.length === 0 || initialShowCreate);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [courseStructure, setCourseStructure] = useState(createDefaultCourseDraft);
+  const courseGroups = useMemo(() => {
+    const decoratedCourses = courses.map((course) => {
+      const progress = getCourseProgress(course);
+
+      return {
+        course,
+        progress,
+        nextLesson: getNextLesson(course),
+      };
+    });
+
+    return {
+      activeCourses: decoratedCourses.filter(({ progress }) => progress.progressPercentage < 100),
+      completedCourses: decoratedCourses.filter(({ progress }) => progress.progressPercentage >= 100),
+    };
+  }, [courses]);
 
   const serializedBlueprint = useMemo(() => {
     const payload: CourseBlueprintSectionInput[] = courseStructure.map((section) => ({
@@ -58,7 +92,17 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
 
   function updateSectionTitle(sectionIndex: number, value: string) {
     setCourseStructure((current) =>
-      current.map((section, index) => (index === sectionIndex ? { ...section, title: value } : section)),
+      current.map((section, index) =>
+        index === sectionIndex ? { ...section, title: value, import_status: null } : section,
+      ),
+    );
+  }
+
+  function updateSectionImportJson(sectionIndex: number, value: string) {
+    setCourseStructure((current) =>
+      current.map((section, index) =>
+        index === sectionIndex ? { ...section, import_json: value, import_status: null } : section,
+      ),
     );
   }
 
@@ -86,7 +130,91 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
               [field]: value,
             };
           }),
+          import_status: null,
         };
+      }),
+    );
+  }
+
+  function convertMinutesToDraftDuration(totalMinutes: number) {
+    const safeMinutes = Math.max(0, Math.floor(totalMinutes));
+
+    return {
+      duration_hours: Math.floor(safeMinutes / 60).toString(),
+      duration_minutes: (safeMinutes % 60).toString(),
+    };
+  }
+
+  function importSectionJson(sectionIndex: number) {
+    setCourseStructure((current) =>
+      current.map((section, index) => {
+        if (index !== sectionIndex) {
+          return section;
+        }
+
+        const rawJson = section.import_json.trim();
+
+        if (!rawJson) {
+          return {
+            ...section,
+            import_status: "Paste subsection JSON first.",
+          };
+        }
+
+        try {
+          const parsed = JSON.parse(rawJson) as {
+            title?: unknown;
+            lessons?: Array<{
+              title?: unknown;
+              duration_minutes?: unknown;
+              video_url?: unknown;
+            }>;
+          };
+
+          if (typeof parsed.title !== "string" || parsed.title.trim().length === 0) {
+            throw new Error("The subsection JSON needs a title.");
+          }
+
+          if (!Array.isArray(parsed.lessons) || parsed.lessons.length === 0) {
+            throw new Error("The subsection JSON needs at least one lesson.");
+          }
+
+          const normalizedLessons = parsed.lessons.map((lesson, lessonIndex) => {
+            if (typeof lesson?.title !== "string" || lesson.title.trim().length === 0) {
+              throw new Error(`Lesson ${lessonIndex + 1} needs a title.`);
+            }
+
+            const durationValue =
+              typeof lesson.duration_minutes === "number"
+                ? lesson.duration_minutes
+                : Number(lesson.duration_minutes ?? 0);
+
+            const safeDuration = Number.isFinite(durationValue) ? Math.max(0, Math.floor(durationValue)) : 0;
+
+            const videoUrl =
+              typeof lesson.video_url === "string"
+                ? lesson.video_url.trim()
+                : "";
+
+            return {
+              title: lesson.title.trim(),
+              ...convertMinutesToDraftDuration(safeDuration),
+              video_url: videoUrl,
+            };
+          });
+
+          return {
+            ...section,
+            title: parsed.title.trim(),
+            lessons: normalizedLessons,
+            import_status: `${normalizedLessons.length} lesson${normalizedLessons.length === 1 ? "" : "s"} imported.`,
+          };
+        } catch (error) {
+          return {
+            ...section,
+            import_status: error instanceof Error ? error.message : "Subsection JSON could not be parsed.",
+          };
+        }
       }),
     );
   }
@@ -130,6 +258,155 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
           lessons: section.lessons.filter((_, innerIndex) => innerIndex !== lessonIndex),
         };
       }),
+    );
+  }
+
+  function renderCourseCard(
+    course: CourseWithSections,
+    progress: ReturnType<typeof getCourseProgress>,
+    nextLesson: ReturnType<typeof getNextLesson>,
+  ) {
+    const isEditing = editingCourseId === course.id;
+
+    return (
+      <article key={course.id} className="soft-ring rounded-[24px] border border-line bg-surface p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="mt-2 text-2xl font-semibold tracking-tight">{course.title}</h3>
+            <p className="mt-1 text-sm text-muted">Created {formatDate(course.created_at)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditingCourseId(isEditing ? null : course.id)}
+            className="rounded-full border border-line px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted"
+          >
+            {isEditing ? "Close" : "Edit"}
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[18px] bg-surface-strong p-4">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Completed</p>
+            <p className="mt-2 text-2xl font-semibold">{formatMinutes(progress.completedMinutes)}</p>
+          </div>
+          <div className="rounded-[18px] bg-surface-strong p-4">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Remaining</p>
+            <p className="mt-2 text-2xl font-semibold">{formatMinutes(progress.remainingMinutes)}</p>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span>Progress</span>
+            <span>{progress.progressPercentage}%</span>
+          </div>
+          <div className="h-3 overflow-hidden rounded-full bg-accent-soft">
+            <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progress.progressPercentage}%` }} />
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-2 text-sm text-muted">
+          <p>Total tracked time: {formatMinutes(progress.totalMinutes)}</p>
+          <p>Completed lessons: {progress.completedLessonsCount}</p>
+          <p>Total lessons: {progress.totalLessonsCount}</p>
+        </div>
+
+        <div className="mt-5 rounded-[18px] border border-line bg-surface-strong/60 p-4">
+          <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Start here</p>
+          {nextLesson ? (
+            <>
+              <p className="mt-2 text-base font-semibold text-foreground">{nextLesson.lessonTitle}</p>
+              <p className="mt-1 text-sm text-muted">
+                Section {nextLesson.sectionSortOrder}: {nextLesson.sectionTitle}
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                Lesson {nextLesson.lessonSortOrder}
+                {nextLesson.durationMinutes > 0 ? ` • ${formatMinutes(nextLesson.durationMinutes)}` : ""}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link
+                  href={`/courses/${course.id}?mode=track`}
+                  className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-[#0f1412]"
+                >
+                  Resume here
+                </Link>
+                {nextLesson.videoUrl ? (
+                  <a
+                    href={nextLesson.videoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-foreground"
+                  >
+                    Open next video
+                  </a>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-base font-semibold text-foreground">Course complete</p>
+              <p className="mt-1 text-sm text-muted">You have finished every lesson in this course.</p>
+            </>
+          )}
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Link
+            href={`/courses/${course.id}?mode=track`}
+            className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-[#0f1412]"
+          >
+            Track
+          </Link>
+          <Link
+            href={`/courses/${course.id}`}
+            className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-foreground"
+          >
+            Manage
+          </Link>
+          <form action={deleteCourseAction}>
+            <input type="hidden" name="course_id" value={course.id} />
+            <SubmitButton variant="outline" className="soft-ring">Delete</SubmitButton>
+          </form>
+        </div>
+
+        {isEditing ? (
+          <form action={updateCourseAction} className="mt-6 grid gap-4 border-t border-line pt-6 md:grid-cols-2">
+            <input type="hidden" name="course_id" value={course.id} />
+            <label className="space-y-2">
+              <span className="text-sm font-medium">Course title</span>
+              <input
+                name="title"
+                required
+                defaultValue={course.title}
+                className="w-full rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
+              />
+            </label>
+            <label className="space-y-2 md:col-span-2">
+              <span className="text-sm font-medium">Description</span>
+              <textarea
+                name="description"
+                rows={3}
+                defaultValue={course.description ?? ""}
+                className="w-full rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium">Fallback target hours</span>
+              <input
+                name="target_hours"
+                type="number"
+                min="0"
+                step="0.5"
+                defaultValue={course.target_hours ?? ""}
+                className="w-full rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
+              />
+            </label>
+            <div className="flex items-end">
+              <SubmitButton>Save changes</SubmitButton>
+            </div>
+          </form>
+        ) : null}
+      </article>
     );
   }
 
@@ -186,6 +463,16 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
                 </p>
               </div>
 
+              <div className="rounded-[20px] border border-line bg-background/20 p-5">
+                <p className="text-sm font-semibold">Subsection JSON template</p>
+                <p className="mt-2 text-sm text-muted">
+                  Copy this into ChatGPT and ask it to return the subsection in exactly this JSON shape.
+                </p>
+                <pre className="mt-4 overflow-x-auto rounded-[16px] border border-line bg-surface px-4 py-4 text-xs leading-6 text-muted">
+                  {SUBSECTION_JSON_TEMPLATE}
+                </pre>
+              </div>
+
               {courseStructure.map((section, sectionIndex) => (
                 <div key={`draft-section-${sectionIndex}`} className="rounded-[20px] border border-line bg-surface-strong/50 p-5">
                   <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -225,6 +512,33 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
                       className="w-full rounded-[16px] border border-line bg-background/40 px-4 py-3 outline-none focus:border-accent"
                     />
                   </label>
+
+                  <div className="mt-5 rounded-[18px] border border-line bg-background/20 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold">Paste subsection JSON</p>
+                        <p className="mt-1 text-sm text-muted">
+                          Import the subsection title, lessons, durations, and optional video URLs in one step.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => importSectionJson(sectionIndex)}
+                        className="rounded-full border border-line px-4 py-2 text-sm font-medium transition hover:bg-surface"
+                      >
+                        Import subsection
+                      </button>
+                    </div>
+                    <textarea
+                      value={section.import_json}
+                      onChange={(event) => updateSectionImportJson(sectionIndex, event.target.value)}
+                      rows={10}
+                      className="mt-4 w-full rounded-[16px] border border-line bg-surface px-4 py-3 font-mono text-sm outline-none focus:border-accent"
+                    />
+                    {section.import_status ? (
+                      <p className="mt-3 text-sm text-muted">{section.import_status}</p>
+                    ) : null}
+                  </div>
 
                   <div className="mt-5 grid gap-3">
                     {section.lessons.map((lesson, lessonIndex) => (
@@ -324,156 +638,33 @@ export function CourseManager({ courses, initialShowCreate = false }: CourseMana
         </section>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        {courses.map((course) => {
-          const progress = getCourseProgress(course);
-          const nextLesson = getNextLesson(course);
-          const isEditing = editingCourseId === course.id;
+      {courseGroups.activeCourses.length > 0 ? (
+        <section className="space-y-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-muted">In progress</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-tight">Courses you are still working through</h3>
+          </div>
+          <div className="grid gap-5 lg:grid-cols-2">
+            {courseGroups.activeCourses.map(({ course, progress, nextLesson }) =>
+              renderCourseCard(course, progress, nextLesson),
+            )}
+          </div>
+        </section>
+      ) : null}
 
-          return (
-            <article key={course.id} className="soft-ring rounded-[24px] border border-line bg-surface p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="mt-2 text-2xl font-semibold tracking-tight">{course.title}</h3>
-                  <p className="mt-1 text-sm text-muted">Created {formatDate(course.created_at)}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingCourseId(isEditing ? null : course.id)}
-                  className="rounded-full border border-line px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted"
-                >
-                  {isEditing ? "Close" : "Edit"}
-                </button>
-              </div>
-
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[18px] bg-surface-strong p-4">
-                  <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Completed</p>
-                  <p className="mt-2 text-2xl font-semibold">{formatMinutes(progress.completedMinutes)}</p>
-                </div>
-                <div className="rounded-[18px] bg-surface-strong p-4">
-                  <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Remaining</p>
-                  <p className="mt-2 text-2xl font-semibold">{formatMinutes(progress.remainingMinutes)}</p>
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span>Progress</span>
-                  <span>{progress.progressPercentage}%</span>
-                </div>
-                <div className="h-3 overflow-hidden rounded-full bg-accent-soft">
-                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progress.progressPercentage}%` }} />
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-2 text-sm text-muted">
-                <p>Total tracked time: {formatMinutes(progress.totalMinutes)}</p>
-                <p>Completed lessons: {progress.completedLessonsCount}</p>
-                <p>Total lessons: {progress.totalLessonsCount}</p>
-              </div>
-
-              <div className="mt-5 rounded-[18px] border border-line bg-surface-strong/60 p-4">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-muted">Start here</p>
-                {nextLesson ? (
-                  <>
-                    <p className="mt-2 text-base font-semibold text-foreground">{nextLesson.lessonTitle}</p>
-                    <p className="mt-1 text-sm text-muted">
-                      Section {nextLesson.sectionSortOrder}: {nextLesson.sectionTitle}
-                    </p>
-                    <p className="mt-1 text-sm text-muted">
-                      Lesson {nextLesson.lessonSortOrder}
-                      {nextLesson.durationMinutes > 0 ? ` • ${formatMinutes(nextLesson.durationMinutes)}` : ""}
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <Link
-                        href={`/courses/${course.id}?mode=track`}
-                        className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-[#0f1412]"
-                      >
-                        Resume here
-                      </Link>
-                      {nextLesson.videoUrl ? (
-                        <a
-                          href={nextLesson.videoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-foreground"
-                        >
-                          Open next video
-                        </a>
-                      ) : null}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-2 text-base font-semibold text-foreground">Course complete</p>
-                    <p className="mt-1 text-sm text-muted">
-                      You have finished every lesson in this course.
-                    </p>
-                  </>
-                )}
-              </div>
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href={`/courses/${course.id}?mode=track`}
-                  className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-[#0f1412]"
-                >
-                  Track
-                </Link>
-                <Link
-                  href={`/courses/${course.id}`}
-                  className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-foreground"
-                >
-                  Manage
-                </Link>
-                <form action={deleteCourseAction}>
-                  <input type="hidden" name="course_id" value={course.id} />
-                  <SubmitButton variant="outline" className="soft-ring">Delete</SubmitButton>
-                </form>
-              </div>
-
-              {isEditing ? (
-                <form action={updateCourseAction} className="mt-6 grid gap-4 border-t border-line pt-6 md:grid-cols-2">
-                  <input type="hidden" name="course_id" value={course.id} />
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium">Course title</span>
-                    <input
-                      name="title"
-                      required
-                      defaultValue={course.title}
-                      className="w-full rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
-                    />
-                  </label>
-                  <label className="space-y-2 md:col-span-2">
-                    <span className="text-sm font-medium">Description</span>
-                    <textarea
-                      name="description"
-                      rows={3}
-                      defaultValue={course.description ?? ""}
-                      className="w-full rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
-                    />
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium">Fallback target hours</span>
-                    <input
-                      name="target_hours"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      defaultValue={course.target_hours ?? ""}
-                      className="w-full rounded-[16px] border border-line bg-surface-strong px-4 py-3 outline-none focus:border-accent"
-                    />
-                  </label>
-                  <div className="flex items-end">
-                    <SubmitButton>Save changes</SubmitButton>
-                  </div>
-                </form>
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
+      {courseGroups.completedCourses.length > 0 ? (
+        <section className="space-y-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-muted">Completed</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-tight">Finished courses</h3>
+          </div>
+          <div className="grid gap-5 lg:grid-cols-2">
+            {courseGroups.completedCourses.map(({ course, progress, nextLesson }) =>
+              renderCourseCard(course, progress, nextLesson),
+            )}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

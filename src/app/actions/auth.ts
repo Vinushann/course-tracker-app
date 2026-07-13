@@ -45,7 +45,7 @@ export async function loginAction(formData: FormData) {
     redirect(buildRedirect("/login", error.message));
   }
 
-  await ensureProfile();
+  await ensureProfile(supabase);
 
   redirect("/dashboard");
 }
@@ -68,7 +68,7 @@ export async function signupAction(formData: FormData) {
     redirect(buildRedirect("/login", "Account created. Check your inbox if email confirmation is enabled.", "success"));
   }
 
-  await ensureProfile();
+  await ensureProfile(supabase);
 
   redirect("/dashboard");
 }
